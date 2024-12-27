@@ -1,0 +1,741 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Signal Generator Pro</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --primary: {% if game_type == 'crash' %}#9D34F8{% else %}#FF4D4D{% endif %};
+            --accent: {% if game_type == 'crash' %}#00E676{% else %}#FFD700{% endif %};
+            --background: #0A061E;
+            --card: rgba(20, 16, 41, 0.8);
+            --text: #ffffff;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background: var(--background) url('{% if game_type == "crash" %}{% static "img/crash_bg.webp" %}{% else %}{% static "img/aviator_bg.webp" %}{% endif %}') center/cover fixed;
+        }
+
+        .container {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            position: relative;
+            justify-content: center;  /* Vertikal markazlashtirish */
+            gap: 20px;               /* Elementlar orasidagi masofa */
+        }
+
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--card);
+            padding: 12px 20px;
+            border-radius: 20px;
+            border: 1px solid rgba(157, 52, 248, 0.3);
+            backdrop-filter: blur(10px);
+            margin-bottom: 20px;
+            z-index: 2;
+        }
+
+        .stats-pill {
+            background: rgba(157, 52, 248, 0.2);
+            padding: 8px 16px;
+            border-radius: 12px;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .best-signal {
+            color: var(--accent);
+            font-weight: bold;
+        }
+        .progress-ring {
+            position: absolute;
+            top: 50%;
+            right: 20px;
+            transform: translateY(-50%);
+            width: 24px;
+            height: 24px;
+        }
+        .progress-ring__circle {
+            transition: stroke-dashoffset 0.35s;
+            transform: rotate(-90deg);
+            transform-origin: 50% 50%;
+            stroke: var(--accent);
+        }
+
+        .lang-group {
+            display: flex;
+            gap: 8px;
+        }
+        @keyframes loading {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        .lang-btn {
+            background: transparent;
+            border: 1px solid var(--primary);
+            color: var(--text);
+            padding: 6px 12px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .lang-btn.active {
+            background: var(--primary);
+        }
+
+        .airplane-container {
+            position: absolute;
+            width: 280px;
+            height: 180px;
+            /* Signal kartasiga nisbatan pozitsiya */
+            bottom: 75%;  /* Signal kartasi tepasida */
+            left: 22%;     /* Signal kartasi markazida */
+            transform: translateX(-50%);  /* Markazlashtirish uchun */
+            z-index: 1;
+            margin-bottom: -40px;  /* Signal kartasiga yaqinlashtirish */
+        }
+
+        .airplane {
+            width: 200%;
+            height: 200%;
+            background: url('{% if game_type == "crash" %}{% static "img/crash_plane.png" %}{% else %}{% static "img/aviator_plane.png" %}{% endif %}') center/contain no-repeat;
+            filter: drop-shadow(0 0 20px rgba(157, 52, 248, 0.5));
+            animation: hover 3s ease-in-out infinite;
+            transition: all 0.3s ease;
+        }
+
+        .signal-card {
+            position: relative;  /* O'zgartirish - absolute o'rniga relative */
+            margin: auto;       /* Markazlashtirish */
+            background: var(--card);
+            padding: 30px;
+            border-radius: 24px;
+            text-align: center;
+            border: 1px solid rgba(157, 52, 248, 0.3);
+            backdrop-filter: blur(20px);
+            width: 85%;
+            max-width: 320px;
+            z-index: 0;
+        }
+
+        .signal-value {
+            font-size: 48px;
+            font-weight: bold;
+            color: var(--accent);
+            margin: 20px 0;
+            text-shadow: 0 0 20px rgba(0, 230, 118, 0.3);
+            font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        .signal-btn {
+            background: var(--primary);
+            border: none;
+            padding: 16px 32px;
+            border-radius: 16px;
+            color: var(--text);
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            width: 100%;
+            position: relative;
+            overflow: hidden;
+        }
+        .signal-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transform: translateX(-100%);
+        }
+        .signal-btn.loading::before {
+            animation: loading 2s linear infinite;
+        }
+
+
+        .signal-btn::after {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(
+                45deg,
+                transparent,
+                rgba(255, 255, 255, 0.1),
+                transparent
+            );
+            transform: rotate(45deg);
+            animation: shine 3s infinite;
+        }
+
+        .history-section {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: var(--card);
+            padding: 20px;
+            border-radius: 24px 24px 0 0;
+            border-top: 1px solid rgba(157, 52, 248, 0.3);
+            backdrop-filter: blur(20px);
+        }
+
+        .history-title {
+            font-size: 16px;
+            margin-bottom: 15px;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .history-list {
+            display: flex;
+            gap: 10px;
+            overflow-x: auto;
+            padding: 5px 0;
+            scrollbar-width: none;
+        }
+
+        .history-list::-webkit-scrollbar {
+            display: none;
+        }
+
+        .history-item {
+            background: rgba(157, 52, 248, 0.2);
+            padding: 10px 20px;
+            border-radius: 12px;
+            font-size: 16px;
+            border: 1px solid rgba(157, 52, 248, 0.3);
+            min-width: 80px;
+            text-align: center;
+        }
+
+        @keyframes hover {
+            0% { transform: translateY(0); }
+            50% { transform: translateY(-15px); }
+            100% { transform: translateY(0); }
+        }
+
+        @keyframes shine {
+            0% { transform: translateX(-100%) rotate(45deg); }
+            100% { transform: translateX(100%) rotate(45deg); }
+        }
+        /* CSS qismiga qo'shish kerak */
+        
+        /* Yangi portlash animatsiyasi */
+        @keyframes explode {
+            0% { 
+                transform: scale(1) rotate(0);
+                filter: brightness(3);
+            }
+            50% { 
+                transform: scale(1.5) rotate(180deg);
+                filter: brightness(2);
+                opacity: 0.5;
+            }
+            100% { 
+                transform: scale(0) rotate(360deg);
+                filter: brightness(1);
+                opacity: 0;
+            }
+        }
+        
+        /* Yangi animatsiyalar samolyot uchun */
+        @keyframes burn {
+            0% { 
+                filter: drop-shadow(0 0 20px #FF4D4D) brightness(1.2);
+                transform: translateY(0) scale(1);
+            }
+            25% { 
+                filter: drop-shadow(0 0 40px #FF4D4D) brightness(1.5);
+                transform: translateY(-5px) scale(1.05);
+            }
+            50% { 
+                filter: drop-shadow(0 0 60px #FF4D4D) brightness(1.8);
+                transform: translateY(0) scale(1.1);
+            }
+            75% { 
+                filter: drop-shadow(0 0 40px #ff3333) brightness(1.5);
+                transform: translateY(5px) scale(1.05);
+            }
+            100% { 
+                filter: drop-shadow(0 0 20px #FF4D4D) brightness(1.2);
+                transform: translateY(0) scale(1);
+            }
+        }
+        
+        /* Qaytish animatsiyasi */
+        @keyframes return {
+            0% { 
+                transform: scale(0) rotate(360deg);
+                opacity: 0;
+            }
+            50% { 
+                transform: scale(1.2) rotate(180deg);
+                opacity: 0.5;
+            }
+            100% { 
+                transform: scale(1) rotate(0);
+                opacity: 1;
+            }
+        }
+        #explosionCanvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 999;
+        }
+        
+        .airplane.burning {
+            animation: burn 0.8s infinite;
+        }
+        
+        .airplane.exploding {
+            animation: explode 1s forwards;
+        }
+        
+        .airplane.returning {
+            animation: return 0.8s forwards;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        .airplane.flying {
+            animation: flyAndHover 2s ease-in-out;
+        }
+
+        @keyframes flyAndHover {
+            0% { transform: translateY(0) scale(1); }
+            50% { transform: translateY(-30px) scale(1.1); }
+            100% { transform: translateY(0) scale(1); }
+        }
+
+        .timer {
+            font-size: 24px;
+            color: rgba(255, 255, 255, 0.8);
+            margin: 10px 0;
+        }
+
+        .loading .signal-btn {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+
+        .success {
+            animation: pulse 0.5s ease-out;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <canvas id="explosionCanvas"></canvas>
+        <!-- Top Bar -->
+        <div class="top-bar">
+            <div class="stats-pill">
+                <span>0/60</span>
+                <span class="best-signal">0.00x</span>
+            </div>
+            <div class="lang-group">
+                <button class="lang-btn {% if language == 'uz' %}active{% endif %}">UZ</button>
+                <button class="lang-btn {% if language == 'en' %}active{% endif %}">EN</button>
+                <button class="lang-btn {% if language == 'ru' %}active{% endif %}">RU</button>
+            </div>
+        </div>
+
+        <!-- Airplane -->
+        <div class="airplane-container">
+            <div class="airplane"></div>
+        </div>
+
+        <!-- Signal Card -->
+        <div class="signal-card">
+            <div class="signal-value" id="signalValue">0.00x</div>
+            <div class="timer" id="timer"></div>
+            <button class="signal-btn" id="generateBtn" onclick="generateSignal()">
+                {% if language == 'uz' %}Signal olish
+                {% elif language == 'en' %}Get Signal
+                {% else %}Получить сигнал{% endif %}
+            </button>
+        </div>
+
+        <!-- History Section -->
+        <div class="history-section">
+            <div class="history-title">
+                {% if language == 'uz' %}So'nggi signallar
+                {% elif language == 'en' %}Recent Signals
+                {% else %}Последние сигналы{% endif %}
+            </div>
+            <div class="history-list"></div>
+        </div>
+    </div>
+
+    <script>
+        const translations = {
+            uz: {
+                generate: 'Signal olish',
+                wait: 'Kuting...',
+                history: "So'nggi signallar"
+            },
+            en: {
+                generate: 'Get Signal',
+                wait: 'Wait...',
+                history: 'Recent Signals'
+            },
+            ru: {
+                generate: 'Получить сигнал',
+                wait: 'Подождите...',
+                history: 'Последние сигналы'
+            }
+        };
+
+        // JavaScript qismiga Explosion class va funksiyalarni qo'shamiz
+        class Particle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = Math.random() * 4 + 2;
+                this.speed = Math.random() * 8 + 4;
+                this.angle = Math.random() * Math.PI * 2;
+                this.opacity = 1;
+                this.scale = 1;
+                // Olov ranglari
+                const colors = [
+                    '#FF4D4D', '#FF9933', '#FFCC00', '#FF3300', '#FF6600'
+                ];
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+            }
+        
+            update() {
+                this.x += Math.cos(this.angle) * this.speed;
+                this.y += Math.sin(this.angle) * this.speed;
+                this.opacity -= 0.015;
+                this.speed *= 0.95;
+                this.radius *= 0.97;
+            }
+        
+            draw(ctx) {
+                ctx.save();
+                ctx.globalAlpha = this.opacity;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+        
+                // Yorug'lik effekti
+                ctx.globalAlpha = this.opacity * 0.5;
+                ctx.filter = 'blur(4px)';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * 2, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+        
+        class Explosion {
+            constructor(x, y) {
+                this.particles = [];
+                for (let i = 0; i < 150; i++) {  // 100 dan 150 ga ko'paytirdik
+                    this.particles.push(new Particle(x, y));
+                }
+            }
+        
+            update() {
+                this.particles.forEach(particle => particle.update());
+                this.particles = this.particles.filter(particle => particle.opacity > 0);
+            }
+        
+            draw(ctx) {
+                this.particles.forEach(particle => particle.draw(ctx));
+            }
+        
+            isFinished() {
+                return this.particles.length === 0;
+            }
+        }
+        
+        // Canvas va kontekstni olish
+        const canvas = document.getElementById('explosionCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Canvas o'lchamlarini to'g'rilash
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        
+        // O'lchamni o'zgartirish eventi
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+        
+        let explosions = [];
+        
+        // Portlash yaratish funksiyasi
+        function createExplosion(x, y) {
+            explosions.push(new Explosion(x, y));
+        }
+        
+        // Animatsiya loop
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            explosions.forEach(explosion => {
+                explosion.update();
+                explosion.draw(ctx);
+            });
+            
+            explosions = explosions.filter(explosion => !explosion.isFinished());
+            
+            if (explosions.length > 0) {
+                requestAnimationFrame(animate);
+            }
+        }
+        
+        // generateSignal funksiyasini yangilaymiz
+        function generateSignal() {
+            if (isGenerating) return;
+            
+            ws.send(JSON.stringify({
+                action: 'get_signal',
+                user_id: userId,
+                bookmaker: bookmaker,
+                game_type: gameType
+            }));
+            
+            startGeneratingAnimation();
+        }
+        // Game configuration based on game type
+        const gameConfig = {
+            crash: {
+                minValue: 1.1,
+                maxValue: 30.0,
+                particleColors: ['#FF4D4D', '#FF9933', '#FFCC00']
+            },
+            aviator: {
+                minValue: 1.1,
+                maxValue: 25.0,
+                particleColors: ['#FFD700', '#FFA500', '#FF6347']
+            }
+        }[gameType];
+
+        let isGenerating = false;
+        let signalHistory = [];
+        let successCount = 0;
+        let bestSignal = 0;
+
+        // Initialize Telegram WebApp
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+
+        // Get parameters from Django context
+        const gameType = '{{ game_type }}';
+        const userId = '{{ user_id }}';
+        const bookmaker = '{{ bookmaker }}';
+        const currentLang = '{{ language }}';
+
+        // WebSocket connection
+        const ws = new WebSocket(
+            `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/signal/${userId}/${gameType}/`
+        );
+
+        // WebSocket event handlers
+        ws.onopen = function() {
+            console.log("WebSocket connection established");
+        };
+
+        ws.onmessage = function(e) {
+            const data = JSON.parse(e.data);
+            if (data.action === 'new_signal') {
+                handleNewSignal(data.signal);
+            }
+        };
+
+        ws.onclose = function() {
+            console.log("WebSocket connection closed");
+        };
+        
+        function resetState() {
+            isGenerating = false;
+            const airplane = document.querySelector('.airplane');
+            const signalValue = document.getElementById('signalValue');
+            const timer = document.getElementById('timer');
+            const generateBtn = document.getElementById('generateBtn');
+        
+            // Barcha animatsiya classlarni olib tashlash
+            airplane.className = 'airplane';
+            signalValue.textContent = '0.00x';
+            signalValue.classList.remove('success');
+            timer.textContent = '';
+            generateBtn.textContent = translations[currentLang].generate;
+            generateBtn.disabled = false;
+        }
+
+        function addToHistory(signal) {
+            signalHistory.unshift(signal);
+            if (signalHistory.length > 5) signalHistory.pop();
+            
+            const historyList = document.querySelector('.history-list');
+            historyList.innerHTML = '';
+            
+            signalHistory.forEach(signal => {
+                const item = document.createElement('div');
+                item.className = 'history-item';
+                item.textContent = signal;
+                historyList.appendChild(item);
+            });
+        }
+
+        function updateStats(signal) {
+            successCount++;
+            if (parseFloat(signal) > bestSignal) {
+                bestSignal = parseFloat(signal);
+                document.querySelector('.best-signal').textContent = signal + 'x';
+            }
+            document.querySelector('.stats-pill').firstElementChild.textContent = 
+                `${successCount}/60`;
+        }
+
+        // Update language handling to use Django template context
+        document.querySelectorAll('.lang-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const lang = btn.textContent.toLowerCase();
+                // Redirect with new language parameter
+                window.location.href = `${window.location.pathname}?game=${gameType}&lang=${lang}`;
+            });
+        });
+        function handleNewSignal(signal) {
+            const signalValue = document.getElementById('signalValue');
+            const airplane = document.querySelector('.airplane');
+            
+            signalValue.textContent = `${signal.value}x`;
+            signalValue.classList.add('success');
+            
+            addToHistory(`${signal.value}x`);
+            updateStats(signal.value);
+            
+            // Animate airplane based on signal value
+            const duration = Math.floor(Math.random() * 15) + 5;
+            animateAirplane(airplane, signal.value, duration);
+        }
+
+        function updateTexts() {
+            const generateBtn = document.getElementById('generateBtn');
+            generateBtn.textContent = isGenerating ? 
+                translations[currentLang].wait : 
+                translations[currentLang].generate;
+            document.querySelector('.history-title').textContent = 
+                translations[currentLang].history;
+        }
+        let currentSignal = null;
+        let signalTimer = null;
+        const POLLING_INTERVAL = 1000; // 1 second
+
+        function updateProgressRing(timeLeft, duration) {
+            const circle = document.querySelector('.progress-ring__circle');
+            const radius = circle.r.baseVal.value;
+            const circumference = radius * 2 * Math.PI;
+            
+            circle.style.strokeDasharray = `${circumference} ${circumference}`;
+            const offset = circumference - (timeLeft / duration) * circumference;
+            circle.style.strokeDashoffset = offset;
+        }
+
+        function createProgressRing() {
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('class', 'progress-ring');
+            svg.setAttribute('width', '24');
+            svg.setAttribute('height', '24');
+            
+            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            circle.setAttribute('class', 'progress-ring__circle');
+            circle.setAttribute('r', '10');
+            circle.setAttribute('cx', '12');
+            circle.setAttribute('cy', '12');
+            circle.setAttribute('fill', 'transparent');
+            circle.setAttribute('stroke-width', '2');
+            
+            svg.appendChild(circle);
+            return svg;
+        }
+
+        async function checkCurrentSignal() {
+            try {
+                const response = await fetch('/api/current-signal');
+                const data = await response.json();
+                
+                if (data.value !== currentSignal?.value) {
+                    currentSignal = data;
+                    if (data.expires_at) {
+                        startSignalTimer(data.expires_at);
+                    }
+                }
+            } catch (error) {
+                console.error('Error checking current signal:', error);
+            }
+        }
+
+        function startSignalTimer(expiresAt) {
+            if (signalTimer) {
+                clearInterval(signalTimer);
+            }
+
+            const duration = expiresAt - (Date.now() / 1000);
+            let timeLeft = duration;
+            
+            const generateBtn = document.getElementById('generateBtn');
+            generateBtn.classList.add('loading');
+            generateBtn.appendChild(createProgressRing());
+            
+            signalTimer = setInterval(() => {
+                timeLeft -= 0.1;
+                updateProgressRing(timeLeft, duration);
+                
+                if (timeLeft <= 0) {
+                    clearInterval(signalTimer);
+                    generateBtn.classList.remove('loading');
+                    const ring = generateBtn.querySelector('.progress-ring');
+                    if (ring) {
+                        ring.remove();
+                    }
+                }
+            }, 100);
+        }
+
+        // Start polling for current signal
+        setInterval(checkCurrentSignal, POLLING_INTERVAL);
+
+        // Initial check
+        checkCurrentSignal();
+    </script>
+</body>
+</html>
